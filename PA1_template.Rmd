@@ -1,25 +1,139 @@
 ---
-title: "Reproducible Research: Peer Assessment 1"
-output: 
-  html_document:
-    keep_md: true
+title: "Analysis of Activity Monitoring Dataset"
+author: "Cora Hermoso"
+date: "July 3, 2017"
+output: html_document
 ---
 
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
 
-## Loading and preprocessing the data
+### Description
 
+This R markdown document shows the code to process the Activity monitoring dataset and its subsequent analysis provided by summaries and graphs. This is a course project for Coursera's Reproducible Research - Week 2.
 
+The dataset, activity.csv, contain 3 variables:
+1. steps - Number of steps taking in a 5-minute interval (missing values are coded as NA)
+2. date - The date on which the measurement was taken in YYYY-MM-DD format
+3. interval - Identifier for the 5-minute interval in which measurement was taken
 
-## What is mean total number of steps taken per day?
+### Loading and preprocessing the data:
+1. Read in the dataset activity.csv using read.csv2 function
+2. Review content using the str and summary functions which show total observations = 17,568 observations and missing data (NA)
+ = 2,304
+ 
+```{r dataset, results="hide"}
+activity <- read.csv2("activity.csv", header = TRUE, sep = ",")
+str(activity)
+summary(activity) 
+```
 
+3. Convert date variable from a factor to date variable
 
+```{r date conversion}
+activity$date <- as.Date(as.character(activity$date, format = "%y/%m/%d"))
+```
 
-## What is the average daily activity pattern?
+### Calculate the total number of steps taken per day:
+4. Install packages 
+   library(dplyr)
+   library(reshape)
+   library(sqldf)
+   library(ggplot2)
 
+```{r libraries, echo=FALSE, results="hide"}
+library(dplyr)
+library(reshape)
+library(sqldf)
+library(ggplot2)
+```
+5. Ignore missing values when calculating the total number of steps per day
+```{r totalsteps}
+totalsteps_day <- activity %>% group_by(date) %>% summarize(tts = sum(steps))
+```
 
+6. Plot a histogram of the total steps taken each day
 
-## Imputing missing values
+```{r hist1}
 
+hist(totalsteps_day$tts,prob=T,breaks=10
+     , main = "Activity Measured by Steps Per Day"
+     , xlab = "No. of Steps", col = "gray")
+```
 
+7. Calculate for the mean and median of the total number of steps per day
 
-## Are there differences in activity patterns between weekdays and weekends?
+```{r summarytotalsteps}
+summary(totalsteps_day$tts)
+```
+
+### Average Daily Activity Pattern
+8. Get the average number of steps, "avgsteps", for each 5-minute interval per day
+9. Use reshape function to transform data which shows 288 obs from df_melt data frame
+```{r meansteps}
+avgsteps <- aggregate(steps ~ interval, data = activity, mean)
+
+# use melt function to reshape data 
+df_melt <- melt(avgsteps, id = "interval")
+
+# str(df_melt) - will show 288 obs
+```
+10. Plot a line type time series of the 5-minute interval (x-axis) and the average number of steps averaged across all days (y-axis), which was previously computed in step 8 above.
+
+```{r timeseriesplot1}
+plot(df_melt$interval, df_melt$value, type = "l", xlab = "5-Min Interval", ylab = "No. of Steps", main = "Time Series Plot of Steps Averaged Daily In 5-Minute Interval", col = "blue")
+```
+
+11. To determine which 5-minute interval has the maximum number of steps, use which.max function
+
+```{r maxsteps}
+# find max number of steps
+df_melt[which.max(df_melt$value),]
+```
+
+### Imputing missing values
+12. Calculate the total number of missing values. The str and summary functions have shown 2,304 NAs in the previous steps. Verify this number using length and which functions.
+```{r NAs}
+nas <- length(which(is.na(activity)))
+```
+13. The missing values, NA, is to be replaced by the mean of the variable interval for each day, which was already calculated in step 8 from df_melt dataframe. 
+14. The sqldf function executes the replacement of the missing value by the mean and creating a new dataset "newdf".
+```{r replaceNA}
+newdf <- sqldf("select case when activity.steps IS NULL then df_melt.value else activity.steps end as steps, activity.date, activity.interval from activity left join df_melt on activity.interval = df_melt.interval")
+```
+
+15. The total number of steps, "new_tsd", is calculated, with all NA's replaced from "newdf" dataset.
+```{r newsteps}
+new_tsd <- newdf %>% group_by(date) %>% summarize(new_tts = sum(steps))
+```
+
+16. A second histogram of the total number of steps each day, with no missing values, is created.
+```{r hist2}
+
+hist(new_tsd$new_tts,prob=T,breaks=10
+     , main = "Activity Measured by Steps Per Day (No missing values)"
+     , xlab = "No. of Steps", col = "green", ylim = c(0,0.0002))
+```
+
+17. The mean and median of the total number of steps each day is calculated. When compared with the previous data having the missing values, the current dataset shows a very slight increase in density in the y-axis but overall, there is not a significant difference, when the distribution on the graphs are compared.
+```{r meantotalsteps}
+summary(new_tsd$new_tts)
+```
+
+### Differences in activity patterns between weekdays and weekends
+
+18. Using weekday() function, a new factor variable, wkday, was created, and added to the dataset by the mutate function.
+
+```{r weekday}
+finaldf <- mutate(newdf, wkday = ifelse(weekdays(date) %in% c("Saturday","Sunday"), "weekend","weekday"))
+```
+
+19. A panel time-series plot is created using ggplot2 package, which shows that the average steps taken daily is consistently higher starting at 500 of the 5-minute interval during the weekday while it is showing a slower pace during the weekend. There are spikes in the weekend at the 1600-1700 step interval. This could mean that most people tend to be active during working days and are relaxed in the weekends although there may be some folks who tend to be active in the weekends, too. 
+```{r finalplot}
+g <- ggplot(finaldf, aes(interval, steps))
+g + geom_line(aes(color = wkday)) + facet_grid(wkday~.) + labs(title = "Activity Analysis Using Measured Steps") + labs(x = "5-Min Interval", y = "Average No. of Steps") + theme(legend.position = "none")
+
+```
+
+* End *
